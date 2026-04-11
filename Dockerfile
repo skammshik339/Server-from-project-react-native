@@ -16,8 +16,10 @@ RUN apt-get update && \
         libxrender1 \
         libxft2 \
         lilypond \
+        guile-2.2-libs \
     && rm -rf /var/lib/apt/lists/*
 
+# Python зависимости
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
@@ -25,22 +27,30 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 # --- ЭТАП 2: Node 20 + Debian 12 ---
 FROM node:20-bookworm
 
+# Копируем Python 3.11 и LilyPond
 COPY --from=pythonlayer /usr/local /usr/local
 COPY --from=pythonlayer /usr/bin/lilypond /usr/bin/lilypond
 
+# Привязываем python3/pip3 к Python 3.11
 RUN ln -sf /usr/local/bin/python3 /usr/bin/python3 && \
     ln -sf /usr/local/bin/pip3 /usr/bin/pip3
 
 WORKDIR /app
 
+# Node зависимости
 COPY package*.json ./
 RUN npm install
 
+# Код проекта
 COPY . .
 
+# Сборка
 RUN npm run build
 
+# Копируем Python-скрипты
 RUN mkdir -p dist/python && cp -r python/* dist/python/
+
+# Папки для файлов
 RUN mkdir -p uploads outputs
 
 ENV PORT=3000
