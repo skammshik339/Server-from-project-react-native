@@ -25,21 +25,13 @@ def log(msg):
     print(msg, file=sys.stderr)
 
 
-def crop_bottom_keep_top(image_path, keep_percent=20):
-    # Функция больше не используется, оставляем на будущее
-    img = Image.open(image_path)
-    width, height = img.size
-    keep_height = int(height * keep_percent / 100)
-    cropped = img.crop((0, 0, width, keep_height))
-    return cropped, img
-
-
 def combine_images_vertical(images):
     if not images:
         return None
 
     max_width = max(img.width for img in images)
     normalized_images = []
+
     for img in images:
         if img.width != max_width:
             ratio = max_width / img.width
@@ -50,7 +42,7 @@ def combine_images_vertical(images):
             normalized_images.append(img)
 
     total_height = sum(img.height for img in normalized_images)
-    combined = Image.new('RGB', (max_width, total_height), 'white')
+    combined = Image.new("RGB", (max_width, total_height), "white")
 
     y_offset = 0
     for img in normalized_images:
@@ -64,15 +56,27 @@ def process_file(xml_path, semitones=-2):
     try:
         log(f"Загружаем MusicXML: {xml_path}")
 
+        # === Читаем MusicXML ===
         score = converter.parse(xml_path)
 
+        # === КРИТИЧЕСКАЯ ПРОВЕРКА ===
+        note_count = len(score.flat.notes)
+        log(f"НОТ В ФАЙЛЕ: {note_count}")
+
+        if note_count == 0:
+            raise Exception(
+                "MusicXML содержит 0 нот — файл не читается этой версией music21 или повреждён."
+            )
+
+        # === Определяем тональность ===
         try:
-            key = score.analyze('key')
+            key = score.analyze("key")
             source_key = f"{key.tonic.name} {key.mode}"
             log(f"Определена тональность: {source_key}")
         except Exception:
             source_key = "unknown"
 
+        # === Транспонирование ===
         log(f"Транспонируем на {semitones} полутонов")
         transposed = score.transpose(semitones)
 
@@ -80,15 +84,16 @@ def process_file(xml_path, semitones=-2):
         ly_filename = f"{base_name}_transposed.ly"
         ly_path = os.path.join(OUTPUTS_DIR, ly_filename)
 
+        # === Сохраняем .ly ===
         log(f"Сохраняем LilyPond файл: {ly_path}")
-        transposed.write('lilypond', fp=ly_path)
+        transposed.write("lilypond", fp=ly_path)
 
-        lilypond_exe = lilypond_path
-
+        # === Запускаем LilyPond ===
         log("Запускаем LilyPond...")
+
         result = subprocess.run(
             [
-                lilypond_exe,
+                lilypond_path,
                 "--png",
                 "-dresolution=300",
                 "-o",
@@ -105,10 +110,14 @@ def process_file(xml_path, semitones=-2):
 
         log("LilyPond успешно завершил работу")
 
+        # === Ищем PNG ===
         raw_png_files = []
         page = 1
+
         while True:
-            png_path = os.path.join(OUTPUTS_DIR, f"{base_name}_transposed-page{page}.png")
+            png_path = os.path.join(
+                OUTPUTS_DIR, f"{base_name}_transposed-page{page}.png"
+            )
             if os.path.exists(png_path):
                 raw_png_files.append(png_path)
                 log(f"Найден PNG: {png_path}")
@@ -117,23 +126,26 @@ def process_file(xml_path, semitones=-2):
                 break
 
         if not raw_png_files:
-            single_png = os.path.join(OUTPUTS_DIR, f"{base_name}_transposed.png")
+            single_png = os.path.join(
+                OUTPUTS_DIR, f"{base_name}_transposed.png"
+            )
             if os.path.exists(single_png):
                 raw_png_files.append(single_png)
                 log(f"Найден одиночный PNG: {single_png}")
 
         if not raw_png_files:
-            raise Exception("Нет созданных PNG файлов")
+            raise Exception("LilyPond не создал PNG — ошибка рендеринга.")
 
         log(f"Всего исходных PNG: {len(raw_png_files)}")
 
-        # 🔴 Обрезку отключаем: берём страницы как есть
+        # === БЕЗ ОБРЕЗКИ — берём как есть ===
         cropped_images = []
         for png_path in raw_png_files:
             img = Image.open(png_path)
             cropped_images.append(img)
             log(f"Страница без обрезки: {png_path}")
 
+        # === Склейка ===
         pages_per_combined = 5
         combined_pngs = []
         num_groups = math.ceil(len(cropped_images) / pages_per_combined)
@@ -144,13 +156,16 @@ def process_file(xml_path, semitones=-2):
             group_images = cropped_images[start:end]
 
             combined = combine_images_vertical(group_images)
+
             if combined:
                 if num_groups == 1:
                     output_filename = f"{base_name}_transposed.png"
                 else:
                     output_filename = f"{base_name}_transposed_{group_idx + 1}.png"
+
                 output_path = os.path.join(OUTPUTS_DIR, output_filename)
                 combined.save(output_path, optimize=True, quality=95)
+
                 combined_pngs.append(
                     {
                         "path": output_path,
@@ -158,12 +173,15 @@ def process_file(xml_path, semitones=-2):
                         "url": f"/outputs/{output_filename}",
                     }
                 )
+
                 log(f"Создана комбинированная страница {group_idx + 1}: {output_path}")
                 combined.close()
 
+        # === Закрываем изображения ===
         for img in cropped_images:
             img.close()
 
+        # === Удаляем исходные PNG ===
         for png_path in raw_png_files:
             if os.path.exists(png_path):
                 os.remove(png_path)
@@ -171,6 +189,7 @@ def process_file(xml_path, semitones=-2):
 
         log(f"Всего итоговых PNG: {len(combined_pngs)}")
 
+        # === Ответ ===
         final_result = {
             "success": True,
             "input_file": os.path.basename(xml_path),
@@ -199,4 +218,5 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
 

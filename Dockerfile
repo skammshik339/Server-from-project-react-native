@@ -1,11 +1,9 @@
 FROM node:20-bullseye
 
-# --- Устанавливаем Python, LilyPond и ВСЕ нужные шрифты ---
 RUN apt-get update && \
     apt-get install -y \
         python3 python3-pip \
-        lilypond \
-        lilypond-data \
+        wget \
         ghostscript \
         fontconfig \
         fonts-dejavu \
@@ -19,35 +17,33 @@ RUN apt-get update && \
         libxft2 \
     && rm -rf /var/lib/apt/lists/*
 
-# --- Создаём рабочую директорию ---
+RUN wget https://gitlab.com/lilypond/lilypond/-/releases/v2.24.3/downloads/lilypond-2.24.3-linux-x86_64.tar.gz && \
+    tar -xzf lilypond-2.24.3-linux-x86_64.tar.gz && \
+    mv lilypond-2.24.3 /usr/local/lilypond && \
+    ln -s /usr/local/lilypond/bin/lilypond /usr/bin/lilypond && \
+    rm lilypond-2.24.3-linux-x86_64.tar.gz
+
 WORKDIR /app
 
-# --- Устанавливаем Node зависимости ---
 COPY package*.json ./
 RUN npm install
 
-# --- Устанавливаем Python зависимости ---
 COPY requirements.txt ./
 RUN pip3 install -r requirements.txt
 
-# --- Копируем весь проект ---
 COPY . .
 
-# --- Сборка TypeScript ---
 RUN npm run build
 
-# --- Копируем Python-скрипты в dist ---
 RUN mkdir -p dist/python && cp -r python/* dist/python/
 
-# --- Папки для файлов ---
 RUN mkdir -p uploads outputs
 
-# --- Переменные окружения ---
 ENV PORT=3000
 ENV LILYPOND_PATH=/usr/bin/lilypond
 
-# --- Запуск сервера ---
 CMD ["npm", "start"]
+
 
 
 
