@@ -22,7 +22,8 @@ router.post('/', authMiddleware, upload.single('file'), async (req: any, res: an
     const semitones = req.query.semitones ? parseInt(req.query.semitones) : -2;
 
     const filePath = req.file.path;
-    const pythonScript = path.join(__dirname, '../python/processor.py');
+   const pythonScript = path.join(process.cwd(), 'dist', 'python', 'processor.py');
+
 
     const pythonPath = 'python3';
 
