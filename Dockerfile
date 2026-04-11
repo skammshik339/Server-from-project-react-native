@@ -21,13 +21,17 @@ COPY . .
 # Сборка TypeScript
 RUN npm run build
 
-# Переменные окружения
-ENV PORT=3000
-ENV LILYPOND_PATH=/usr/bin/lilypond
+# Копируем Python-скрипты в dist, чтобы Node мог их запускать
+RUN mkdir -p dist/python && cp -r python/* dist/python/
 
 # Создаём папки
 RUN mkdir -p uploads outputs
 
+# Переменные окружения
+ENV PORT=3000
+ENV LILYPOND_PATH=/usr/bin/lilypond
+
 # Запуск сервера
 CMD ["npm", "start"]
+
 
