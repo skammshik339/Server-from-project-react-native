@@ -15,6 +15,8 @@ import rateLimit from 'express-rate-limit';
 const PORT = process.env.PORT || 3000;
 const app = express();
 
+app.set("trust proxy", 1);
+
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 50, 
@@ -43,6 +45,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/transpose", transposeRouter);
 app.use('/api/user', userRouter)
 app.use('/api/posts', postRouter);
+
+
 
 app.get("/", (req, res) => {
   res.json({ message: "Auth server is running" });
