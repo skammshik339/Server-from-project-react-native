@@ -26,6 +26,7 @@ def log(msg):
 
 
 def crop_bottom_keep_top(image_path, keep_percent=20):
+    # Функция больше не используется, оставляем на будущее
     img = Image.open(image_path)
     width, height = img.size
     keep_height = int(height * keep_percent / 100)
@@ -126,12 +127,12 @@ def process_file(xml_path, semitones=-2):
 
         log(f"Всего исходных PNG: {len(raw_png_files)}")
 
+        # 🔴 Обрезку отключаем: берём страницы как есть
         cropped_images = []
         for png_path in raw_png_files:
-            cropped_img, original_img = crop_bottom_keep_top(png_path, keep_percent=20)
-            cropped_images.append(cropped_img)
-            original_img.close()
-            log(f"Обрезана страница: {png_path} (оставлено верхних 20%)")
+            img = Image.open(png_path)
+            cropped_images.append(img)
+            log(f"Страница без обрезки: {png_path}")
 
         pages_per_combined = 5
         combined_pngs = []
@@ -198,3 +199,4 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
