@@ -1,4 +1,4 @@
-# --- ЭТАП 1: Python 3.11 + music21 + LilyPond ---
+# --- ЭТАП 1: Python 3.11 + music21 (без LilyPond) ---
 FROM python:3.11-slim-bookworm AS pythonlayer
 
 RUN apt-get update && \
@@ -15,21 +15,34 @@ RUN apt-get update && \
         libxext6 \
         libxrender1 \
         libxft2 \
-        lilypond \
-        guile-2.2-libs \
     && rm -rf /var/lib/apt/lists/*
 
-# Python зависимости
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 
-# --- ЭТАП 2: Node 20 + Debian 12 ---
+# --- ЭТАП 2: Node 20 + Debian 12 + LilyPond ---
 FROM node:20-bookworm
 
-# Копируем Python 3.11 и LilyPond
+RUN apt-get update && \
+    apt-get install -y \
+        ghostscript \
+        fontconfig \
+        fonts-dejavu \
+        fonts-dejavu-core \
+        fonts-dejavu-extra \
+        libfreetype6 \
+        libfontconfig1 \
+        libx11-6 \
+        libxext6 \
+        libxrender1 \
+        libxft2 \
+        lilypond \
+        guile-2.2-libs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем Python 3.11 с пакетами
 COPY --from=pythonlayer /usr/local /usr/local
-COPY --from=pythonlayer /usr/bin/lilypond /usr/bin/lilypond
 
 # Привязываем python3/pip3 к Python 3.11
 RUN ln -sf /usr/local/bin/python3 /usr/bin/python3 && \
@@ -57,6 +70,8 @@ ENV PORT=3000
 ENV LILYPOND_PATH=/usr/bin/lilypond
 
 CMD ["npm", "start"]
+
+
 
 
 
