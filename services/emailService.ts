@@ -8,11 +8,14 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  tls: {
+    rejectUnauthorized: false,
+  },
 });
 
 export const sendVerificationEmail = async (email: string, token: string) => {
-  const verificationUrl = `http://localhost:3000/api/auth/verify-email?token=${token}`;
-  
+ const verificationUrl = `https://server-from-project-react-native.onrender.com/api/auth/verify-email?token=${token}`;
+
   await transporter.sendMail({
     from: `"Your App" <${process.env.SMTP_USER}>`,
     to: email,
