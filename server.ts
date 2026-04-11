@@ -5,26 +5,19 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import authRoutes from "./routes/authRouter";
 import path from "path";
+
+import authRoutes from "./routes/authRouter";
 import transposeRouter from "./routes/transposeRouter";
-import userRouter from './routes/userRouter'
-import postRouter from './routes/postRouter';
-import rateLimit from 'express-rate-limit';
+import userRouter from "./routes/userRouter";
+import postRouter from "./routes/postRouter";
+
+import rateLimit from "express-rate-limit";
 
 const PORT = process.env.PORT || 3000;
 const app = express();
 
 app.set("trust proxy", 1);
-
-const limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 50, 
-  message: {
-    error: 'Too many requests',
-    message: 'Превышен лимит запросов'
-  }
-});
 
 const corsOptions = {
   origin: "*",
@@ -32,21 +25,28 @@ const corsOptions = {
   exposedHeaders: ["Authorization", "X-Refresh-Token", "X-New-Access-Token"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Refresh-Token"],
 };
-
-app.use(limiter);
-
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/outputs", express.static(path.join(__dirname, "outputs")));
 app.use(cors(corsOptions));
+
 app.use(express.json());
 app.use(cookieParser());
 
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/outputs", express.static(path.join(__dirname, "outputs")));
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 50,
+  message: {
+    error: "Too many requests",
+    message: "Превышен лимит запросов",
+  },
+});
+app.use(limiter);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/transpose", transposeRouter);
-app.use('/api/user', userRouter)
-app.use('/api/posts', postRouter);
-
-
+app.use("/api/user", userRouter);
+app.use("/api/posts", postRouter);
 
 app.get("/", (req, res) => {
   res.json({ message: "Auth server is running" });
@@ -64,3 +64,4 @@ mongoose
     console.error("MongoDB connection error:", err);
     process.exit(1);
   });
+
