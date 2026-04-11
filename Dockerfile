@@ -1,5 +1,5 @@
 # --- ЭТАП 1: Python 3.11 + music21 + LilyPond ---
-FROM python:3.11-slim AS pythonlayer
+FROM python:3.11-slim-bookworm AS pythonlayer
 
 RUN apt-get update && \
     apt-get install -y \
@@ -29,8 +29,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 
-# --- ЭТАП 2: Node 20 + перенос Python 3.11 ---
-FROM node:20-bullseye
+# --- ЭТАП 2: Node 20 + Debian 12 ---
+FROM node:20-bookworm
 
 # Копируем Python 3.11 полностью
 COPY --from=pythonlayer /usr/local /usr/local
@@ -50,13 +50,13 @@ COPY . .
 RUN npm run build
 
 RUN mkdir -p dist/python && cp -r python/* dist/python/
-
 RUN mkdir -p uploads outputs
 
 ENV PORT=3000
 ENV LILYPOND_PATH=/usr/bin/lilypond
 
 CMD ["npm", "start"]
+
 
 
 
