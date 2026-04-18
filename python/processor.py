@@ -19,12 +19,15 @@ us = environment.UserSettings()
 lilypond_path = os.environ.get("LILYPOND_PATH", "/usr/bin/lilypond")
 us['lilypondPath'] = lilypond_path
 
+# === ВАЖНО: заставляем music21 использовать старый формат LilyPond ===
+env = environment.Environment()
+env['lilypondVersion'] = '2.22.0'
+
 
 def log(msg):
     print(msg, file=sys.stderr)
 
 
-# === Упрощение аккордов ===
 def simplify_chord(ch):
     pitches = sorted({p.nameWithOctave for p in ch.pitches})
     new_ch = chord.Chord(pitches)
@@ -32,7 +35,6 @@ def simplify_chord(ch):
     return new_ch
 
 
-# === Склейка PNG ===
 def combine_images_vertical(images):
     if not images:
         return None
@@ -58,30 +60,22 @@ def combine_images_vertical(images):
     return combined
 
 
-# === Чистка .ly файла от устаревших команд LilyPond 2.24 ===
 def clean_ly_file(path):
     with open(path, "r", encoding="utf-8") as f:
         ly = f.read()
 
-    # Удаляем устаревшие команды
-    bad_commands = [
-        r"\RemoveEmptyStaffContext",
-        r"\override VerticalAxisGroup #'remove-first = ##t",
-    ]
-    for cmd in bad_commands:
-        ly = ly.replace(cmd, "")
-
-    # Исправляем устаревший синтаксис
+    # Удаляем мусор, который иногда генерирует music21
+    ly = ly.replace("<<", "< <")
+    ly = ly.replace(">>", "> >")
     ly = ly.replace("#'direction", "direction")
 
-    # Удаляем двойные << >>, которые ломают 2.24.4
-    ly = ly.replace("<<", "< <").replace(">>", "> >")
+    # Удаляем RemoveEmptyStaffContext
+    ly = ly.replace("\\RemoveEmptyStaffContext", "")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(ly)
 
 
-# === Основная функция ===
 def process_file(xml_path, semitones=-2):
     try:
         log(f"Загружаем MusicXML: {xml_path}")
@@ -90,20 +84,15 @@ def process_file(xml_path, semitones=-2):
         if len(score.flat.notes) == 0:
             raise Exception("MusicXML содержит 0 нот")
 
-        # Определяем тональность
         try:
             key = score.analyze("key")
             source_key = f"{key.tonic.name} {key.mode}"
         except:
             source_key = "unknown"
 
-        # === Транспонирование ===
         transposed = score.transpose(semitones)
-
-        # === Фикс beam-групп и длительностей ===
         transposed.makeNotation(inPlace=True)
 
-        # === Упрощение аккордов ===
         for n in transposed.recurse().notes:
             if isinstance(n, chord.Chord):
                 new = simplify_chord(n)
@@ -115,10 +104,8 @@ def process_file(xml_path, semitones=-2):
         log(f"Сохраняем .ly: {ly_path}")
         transposed.write("lilypond", fp=ly_path)
 
-        # === Чистим .ly файл ===
         clean_ly_file(ly_path)
 
-        # === Запуск LilyPond ===
         log("Запускаем LilyPond...")
         result = subprocess.run(
             [
@@ -137,7 +124,6 @@ def process_file(xml_path, semitones=-2):
             log(result.stderr)
             raise Exception("LilyPond compilation failed")
 
-        # === Поиск PNG ===
         pngs = []
         page = 1
 
@@ -156,7 +142,6 @@ def process_file(xml_path, semitones=-2):
         if not pngs:
             raise Exception("PNG не созданы")
 
-        # === Склейка ===
         images = [Image.open(p) for p in pngs]
         combined = combine_images_vertical(images)
 
@@ -203,6 +188,7 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
 
 
 
