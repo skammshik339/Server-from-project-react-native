@@ -1,4 +1,5 @@
-Pillow
-music21==9.1.0
+music21==7.3.3
+pillow==10.2.0
+
 
 
