@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libxft2 \
     python3 \
     python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Install LilyPond 2.24.4 ---
@@ -21,9 +22,13 @@ RUN wget https://gitlab.com/lilypond/lilypond/-/releases/v2.24.4/downloads/lilyp
     && mv lilypond-2.24.4 /opt/lilypond \
     && ln -s /opt/lilypond/bin/lilypond /usr/bin/lilypond
 
+# --- Python virtual environment (avoids PEP 668 errors) ---
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # --- Python deps ---
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # --- Node app ---
 WORKDIR /app
@@ -43,6 +48,7 @@ ENV PORT=3000
 ENV LILYPOND_PATH=/usr/bin/lilypond
 
 CMD ["npm", "start"]
+
 
 
 
