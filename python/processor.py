@@ -26,7 +26,8 @@ env['lilypondVersion'] = '2.18.0'   # ← ЭТО СПАСАЕТ ВСЁ
 
 def log(msg):
     print(msg, file=sys.stderr)
-
+    
+log("music21 version: " + music21.__version__)
 
 def simplify_chord(ch):
     pitches = sorted({p.nameWithOctave for p in ch.pitches})
