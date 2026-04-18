@@ -1,5 +1,8 @@
 FROM node:20-bookworm
 
+# --- Force rebuild marker (обновляй число при каждом деплое) ---
+ARG REBUILD=1
+
 # --- System deps ---
 RUN apt-get update && apt-get install -y \
     wget \
@@ -22,13 +25,15 @@ RUN wget https://gitlab.com/lilypond/lilypond/-/releases/v2.24.4/downloads/lilyp
     && mv lilypond-2.24.4 /opt/lilypond \
     && ln -s /opt/lilypond/bin/lilypond /usr/bin/lilypond
 
-# --- Python virtual environment (avoids PEP 668 errors) ---
+# --- Python virtual environment ---
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# --- Python deps ---
+# --- Force rebuild pip layer ---
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN echo "FORCE REBUILD $REBUILD" \
+    && pip install --upgrade pip \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
 
 # --- Node app ---
 WORKDIR /app
@@ -48,6 +53,7 @@ ENV PORT=3000
 ENV LILYPOND_PATH=/usr/bin/lilypond
 
 CMD ["npm", "start"]
+
 
 
 
