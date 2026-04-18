@@ -7,7 +7,9 @@ import json
 import os
 import subprocess
 from PIL import Image
-from music21 import *
+
+import music21                     # ← нужно для music21.__version__
+from music21 import *              # ← нужно для converter, chord, environment и т.д.
 
 def log(msg):
     print(msg, file=sys.stderr)
@@ -29,12 +31,6 @@ us['lilypondPath'] = lilypond_path
 env = environment.Environment()
 env['lilypondVersion'] = '2.18.0'
 
-
-
-def log(msg):
-    print(msg, file=sys.stderr)
-
-log("music21 version: " + music21.__version__)
 
 def simplify_chord(ch):
     pitches = sorted({p.nameWithOctave for p in ch.pitches})
@@ -159,6 +155,7 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
 
 
 
