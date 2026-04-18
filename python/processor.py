@@ -6,7 +6,6 @@ import sys
 import json
 import os
 import subprocess
-import math
 from PIL import Image
 from music21 import *
 
@@ -25,9 +24,8 @@ def log(msg):
     print(msg, file=sys.stderr)
 
 
-# === Упрощение аккордов (без изменения звучания) ===
+# === Упрощение аккордов ===
 def simplify_chord(ch):
-    # Убираем дубли и сортируем ноты
     pitches = sorted({p.nameWithOctave for p in ch.pitches})
     new_ch = chord.Chord(pitches)
     new_ch.duration = ch.duration
@@ -60,6 +58,29 @@ def combine_images_vertical(images):
     return combined
 
 
+# === Чистка .ly файла от устаревших команд LilyPond 2.24 ===
+def clean_ly_file(path):
+    with open(path, "r", encoding="utf-8") as f:
+        ly = f.read()
+
+    # Удаляем устаревшие команды
+    bad_commands = [
+        r"\RemoveEmptyStaffContext",
+        r"\override VerticalAxisGroup #'remove-first = ##t",
+    ]
+    for cmd in bad_commands:
+        ly = ly.replace(cmd, "")
+
+    # Исправляем устаревший синтаксис
+    ly = ly.replace("#'direction", "direction")
+
+    # Удаляем двойные << >>, которые ломают 2.24.4
+    ly = ly.replace("<<", "< <").replace(">>", "> >")
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(ly)
+
+
 # === Основная функция ===
 def process_file(xml_path, semitones=-2):
     try:
@@ -79,10 +100,10 @@ def process_file(xml_path, semitones=-2):
         # === Транспонирование ===
         transposed = score.transpose(semitones)
 
-        # === КРИТИЧЕСКИЙ ФИКС ДЛЯ LILYPOND 2.24.4 ===
+        # === Фикс beam-групп и длительностей ===
         transposed.makeNotation(inPlace=True)
 
-        # Упрощаем аккорды
+        # === Упрощение аккордов ===
         for n in transposed.recurse().notes:
             if isinstance(n, chord.Chord):
                 new = simplify_chord(n)
@@ -93,6 +114,9 @@ def process_file(xml_path, semitones=-2):
 
         log(f"Сохраняем .ly: {ly_path}")
         transposed.write("lilypond", fp=ly_path)
+
+        # === Чистим .ly файл ===
+        clean_ly_file(ly_path)
 
         # === Запуск LilyPond ===
         log("Запускаем LilyPond...")
@@ -179,6 +203,7 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
 
 
 
