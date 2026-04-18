@@ -7,14 +7,14 @@ import json
 import os
 import subprocess
 from PIL import Image
+import xml.etree.ElementTree as ET
 
-import music21                     # ← нужно для music21.__version__
-from music21 import *              # ← нужно для converter, chord, environment и т.д.
+import music21
+from music21 import *
 
 def log(msg):
     print(msg, file=sys.stderr)
 
-# Показываем версию music21
 log("music21 version: " + music21.__version__)
 
 # === Пути ===
@@ -32,6 +32,72 @@ env = environment.Environment()
 env['lilypondVersion'] = '2.18.0'
 
 
+# ---------------------------------------------------------
+# NORMALIZATION OF MUSICXML
+# ---------------------------------------------------------
+def normalize_musicxml(xml_path):
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+
+    # Удаляем namespace
+    for elem in root.iter():
+        if "}" in elem.tag:
+            elem.tag = elem.tag.split("}", 1)[1]
+
+    # 1) Удаляем вложенные <voice> внутри <note>
+    for note in root.findall(".//note"):
+        voices = note.findall("voice")
+        if len(voices) > 1:
+            for v in voices[1:]:
+                note.remove(v)
+
+    # 2) Удаляем вложенные <measure> внутри <measure>
+    for measure in root.findall(".//measure"):
+        nested = measure.findall("measure")
+        for m in nested:
+            measure.remove(m)
+
+    # 3) Удаляем пустые ноты
+    for measure in root.findall(".//measure"):
+        for note in list(measure):
+            if note.tag == "note":
+                if note.find("pitch") is None and note.find("rest") is None:
+                    measure.remove(note)
+
+    # 4) Чистим backup/forward
+    for measure in root.findall(".//measure"):
+        children = list(measure)
+        cleaned = []
+        skip = False
+
+        for i, child in enumerate(children):
+            if skip:
+                skip = False
+                continue
+
+            if child.tag in ("backup", "forward"):
+                if i + 1 < len(children) and children[i+1].tag in ("backup", "forward"):
+                    skip = False
+                    continue
+
+            cleaned.append(child)
+
+        measure[:] = cleaned
+
+    # 5) Удаляем вложенные <part> внутри <part>
+    for part in root.findall(".//part"):
+        nested = part.findall("part")
+        for p in nested:
+            part.remove(p)
+
+    normalized_path = xml_path.replace(".musicxml", "_normalized.musicxml")
+    tree.write(normalized_path, encoding="utf-8", xml_declaration=True)
+    return normalized_path
+
+
+# ---------------------------------------------------------
+# CHORD SIMPLIFICATION
+# ---------------------------------------------------------
 def simplify_chord(ch):
     pitches = sorted({p.nameWithOctave for p in ch.pitches})
     new_ch = chord.Chord(pitches)
@@ -39,15 +105,15 @@ def simplify_chord(ch):
     return new_ch
 
 
+# ---------------------------------------------------------
+# CLEAN LILYPOND FILE
+# ---------------------------------------------------------
 def clean_ly_file(path):
     with open(path, "r", encoding="utf-8") as f:
         ly = f.read()
 
-    # Удаляем мусор
     ly = ly.replace("\\RemoveEmptyStaffContext", "")
     ly = ly.replace("#'direction", "direction")
-
-    # Убираем вложенные << >>
     ly = ly.replace("<<", "< <")
     ly = ly.replace(">>", "> >")
 
@@ -55,8 +121,14 @@ def clean_ly_file(path):
         f.write(ly)
 
 
+# ---------------------------------------------------------
+# MAIN PROCESSING
+# ---------------------------------------------------------
 def process_file(xml_path, semitones=-2):
     try:
+        log(f"Нормализуем MusicXML: {xml_path}")
+        xml_path = normalize_musicxml(xml_path)
+
         log(f"Загружаем MusicXML: {xml_path}")
         score = converter.parse(xml_path)
 
@@ -77,7 +149,7 @@ def process_file(xml_path, semitones=-2):
                 new = simplify_chord(n)
                 n.pitches = new.pitches
 
-        base = os.path.splitext(os.path.basename(xml_path))[0]
+        base = os.path.splitext(os.path.basename(xml_path))[0].replace("_normalized", "")
         ly_path = os.path.join(OUTPUTS_DIR, f"{base}_transposed.ly")
 
         log(f"Сохраняем .ly: {ly_path}")
@@ -146,6 +218,9 @@ def process_file(xml_path, semitones=-2):
         return None
 
 
+# ---------------------------------------------------------
+# ENTRY POINT
+# ---------------------------------------------------------
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(json.dumps({"success": False, "error": "No file path"}))
@@ -155,6 +230,7 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
 
 
 
