@@ -19,9 +19,9 @@ us = environment.UserSettings()
 lilypond_path = os.environ.get("LILYPOND_PATH", "/usr/bin/lilypond")
 us['lilypondPath'] = lilypond_path
 
-# === ВАЖНО: заставляем music21 использовать старый формат LilyPond ===
+# === КРИТИЧЕСКОЕ: заставляем music21 использовать старый форматтер ===
 env = environment.Environment()
-env['lilypondVersion'] = '2.22.0'
+env['lilypondVersion'] = '2.18.0'   # ← ЭТО СПАСАЕТ ВСЁ
 
 
 def log(msg):
@@ -35,42 +35,17 @@ def simplify_chord(ch):
     return new_ch
 
 
-def combine_images_vertical(images):
-    if not images:
-        return None
-
-    max_width = max(img.width for img in images)
-    normalized = []
-
-    for img in images:
-        if img.width != max_width:
-            ratio = max_width / img.width
-            new_height = int(img.height * ratio)
-            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-        normalized.append(img)
-
-    total_height = sum(img.height for img in normalized)
-    combined = Image.new("RGB", (max_width, total_height), "white")
-
-    y = 0
-    for img in normalized:
-        combined.paste(img, (0, y))
-        y += img.height
-
-    return combined
-
-
 def clean_ly_file(path):
     with open(path, "r", encoding="utf-8") as f:
         ly = f.read()
 
-    # Удаляем мусор, который иногда генерирует music21
-    ly = ly.replace("<<", "< <")
-    ly = ly.replace(">>", "> >")
+    # Удаляем мусор
+    ly = ly.replace("\\RemoveEmptyStaffContext", "")
     ly = ly.replace("#'direction", "direction")
 
-    # Удаляем RemoveEmptyStaffContext
-    ly = ly.replace("\\RemoveEmptyStaffContext", "")
+    # Убираем вложенные << >>
+    ly = ly.replace("<<", "< <")
+    ly = ly.replace(">>", "> >")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(ly)
@@ -124,9 +99,9 @@ def process_file(xml_path, semitones=-2):
             log(result.stderr)
             raise Exception("LilyPond compilation failed")
 
+        # PNG поиск
         pngs = []
         page = 1
-
         while True:
             p = os.path.join(OUTPUTS_DIR, f"{base}_transposed-page{page}.png")
             if os.path.exists(p):
@@ -142,26 +117,14 @@ def process_file(xml_path, semitones=-2):
         if not pngs:
             raise Exception("PNG не созданы")
 
-        images = [Image.open(p) for p in pngs]
-        combined = combine_images_vertical(images)
-
-        out_name = f"{base}_transposed.png"
-        out_path = os.path.join(OUTPUTS_DIR, out_name)
-        combined.save(out_path, optimize=True, quality=95)
-
-        for img in images:
-            img.close()
-        for p in pngs:
-            os.remove(p)
-
         result = {
             "success": True,
             "input_file": os.path.basename(xml_path),
             "output_files": [
                 {
-                    "path": out_path,
-                    "name": out_name,
-                    "url": f"/outputs/{out_name}",
+                    "path": pngs[0],
+                    "name": os.path.basename(pngs[0]),
+                    "url": f"/outputs/{os.path.basename(pngs[0])}",
                 }
             ],
             "source_key": source_key,
@@ -188,6 +151,7 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
 
 
 
