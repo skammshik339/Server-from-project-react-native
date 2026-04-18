@@ -34,7 +34,8 @@ router.post(
         "python",
         "processor.py",
       );
-      const pythonPath = "/usr/bin/python3";
+      const pythonPath = "/opt/venv/bin/python3";
+
 
       console.log("RUN PYTHON:", pythonPath, pythonScript, filePath, semitones);
 
