@@ -9,6 +9,7 @@ import subprocess
 import math
 from PIL import Image
 from music21 import *
+import re
 
 # === Базовые пути ===
 BASE_DIR = os.getcwd()
@@ -24,6 +25,65 @@ us['lilypondPath'] = lilypond_path
 def log(msg):
     print(msg, file=sys.stderr)
 
+
+# ============================
+# === ОЧИСТКА АККОРДОВ (.ly)
+# ============================
+
+NOTE_BASE = {
+    "c": 0, "cis": 1, "d": 2, "dis": 3, "ees": 3, "e": 4,
+    "f": 5, "fis": 6, "g": 7, "gis": 8, "a": 9, "ais": 10,
+    "bes": 10, "b": 11
+}
+
+def note_to_midi(note: str) -> int:
+    m = re.match(r"^([a-g][ie]?[s]?)([,']*)$", note)
+    if not m:
+        return 60
+    pitch, octave = m.groups()
+    base = NOTE_BASE.get(pitch, 0)
+
+    o = 4
+    for ch in octave:
+        if ch == "'":
+            o += 1
+        elif ch == ",":
+            o -= 1
+
+    return base + o * 12
+
+
+def clean_chords(ly_text: str) -> str:
+    def process_chord(match):
+        inner = match.group(1)
+        notes = [n for n in inner.split() if n.strip()]
+
+        # Удаляем дубли
+        notes = list(dict.fromkeys(notes))
+
+        # Сортируем по высоте
+        notes.sort(key=note_to_midi)
+
+        # Удаляем слишком широкие интервалы (> 12 полутонов)
+        cleaned = [notes[0]]
+        for n in notes[1:]:
+            if note_to_midi(n) - note_to_midi(cleaned[0]) < 12:
+                cleaned.append(n)
+
+        notes = cleaned
+
+        # Если осталась одна нота — возвращаем одиночную ноту
+        if len(notes) == 1:
+            return notes[0]
+
+        return "< " + " ".join(notes) + " >"
+
+    return re.sub(r"<([^>]+)>", process_chord, ly_text)
+
+
+# ============================
+# === ОСНОВНОЙ PIPELINE
+# ============================
 
 def combine_images_vertical(images):
     if not images:
@@ -56,19 +116,14 @@ def process_file(xml_path, semitones=-2):
     try:
         log(f"Загружаем MusicXML: {xml_path}")
 
-        # === Читаем MusicXML ===
         score = converter.parse(xml_path)
 
-        # === КРИТИЧЕСКАЯ ПРОВЕРКА ===
         note_count = len(score.flat.notes)
         log(f"НОТ В ФАЙЛЕ: {note_count}")
 
         if note_count == 0:
-            raise Exception(
-                "MusicXML содержит 0 нот — файл не читается этой версией music21 или повреждён."
-            )
+            raise Exception("MusicXML содержит 0 нот — файл повреждён или не читается.")
 
-        # === Определяем тональность ===
         try:
             key = score.analyze("key")
             source_key = f"{key.tonic.name} {key.mode}"
@@ -76,7 +131,6 @@ def process_file(xml_path, semitones=-2):
         except Exception:
             source_key = "unknown"
 
-        # === Транспонирование ===
         log(f"Транспонируем на {semitones} полутонов")
         transposed = score.transpose(semitones)
 
@@ -84,9 +138,20 @@ def process_file(xml_path, semitones=-2):
         ly_filename = f"{base_name}_transposed.ly"
         ly_path = os.path.join(OUTPUTS_DIR, ly_filename)
 
-        # === Сохраняем .ly ===
         log(f"Сохраняем LilyPond файл: {ly_path}")
         transposed.write("lilypond", fp=ly_path)
+
+        # === ВСТАВЛЯЕМ ОЧИСТКУ АККОРДОВ ===
+        log("Очищаем аккорды в .ly перед запуском LilyPond...")
+        with open(ly_path, "r", encoding="utf-8") as f:
+            ly_raw = f.read()
+
+        ly_cleaned = clean_chords(ly_raw)
+
+        with open(ly_path, "w", encoding="utf-8") as f:
+            f.write(ly_cleaned)
+
+        log("Аккорды очищены успешно")
 
         # === Запускаем LilyPond ===
         log("Запускаем LilyPond...")
@@ -110,7 +175,7 @@ def process_file(xml_path, semitones=-2):
 
         log("LilyPond успешно завершил работу")
 
-        # === Ищем PNG ===
+        # === PNG обработка (оставил как есть) ===
         raw_png_files = []
         page = 1
 
@@ -136,16 +201,12 @@ def process_file(xml_path, semitones=-2):
         if not raw_png_files:
             raise Exception("LilyPond не создал PNG — ошибка рендеринга.")
 
-        log(f"Всего исходных PNG: {len(raw_png_files)}")
-
-        # === БЕЗ ОБРЕЗКИ — берём как есть ===
         cropped_images = []
         for png_path in raw_png_files:
             img = Image.open(png_path)
             cropped_images.append(img)
             log(f"Страница без обрезки: {png_path}")
 
-        # === Склейка ===
         pages_per_combined = 5
         combined_pngs = []
         num_groups = math.ceil(len(cropped_images) / pages_per_combined)
@@ -177,19 +238,14 @@ def process_file(xml_path, semitones=-2):
                 log(f"Создана комбинированная страница {group_idx + 1}: {output_path}")
                 combined.close()
 
-        # === Закрываем изображения ===
         for img in cropped_images:
             img.close()
 
-        # === Удаляем исходные PNG ===
         for png_path in raw_png_files:
             if os.path.exists(png_path):
                 os.remove(png_path)
                 log(f"Удалён исходный файл: {png_path}")
 
-        log(f"Всего итоговых PNG: {len(combined_pngs)}")
-
-        # === Ответ ===
         final_result = {
             "success": True,
             "input_file": os.path.basename(xml_path),
@@ -218,5 +274,6 @@ if __name__ == "__main__":
     semitones = int(sys.argv[2]) if len(sys.argv) > 2 else -2
 
     process_file(xml_path, semitones)
+
 
 
