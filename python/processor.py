@@ -9,6 +9,12 @@ import subprocess
 from PIL import Image
 from music21 import *
 
+def log(msg):
+    print(msg, file=sys.stderr)
+
+# Показываем версию music21
+log("music21 version: " + music21.__version__)
+
 # === Пути ===
 BASE_DIR = os.getcwd()
 OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
@@ -21,12 +27,13 @@ us['lilypondPath'] = lilypond_path
 
 # === КРИТИЧЕСКОЕ: заставляем music21 использовать старый форматтер ===
 env = environment.Environment()
-env['lilypondVersion'] = '2.18.0'   # ← ЭТО СПАСАЕТ ВСЁ
+env['lilypondVersion'] = '2.18.0'
+
 
 
 def log(msg):
     print(msg, file=sys.stderr)
-    
+
 log("music21 version: " + music21.__version__)
 
 def simplify_chord(ch):
