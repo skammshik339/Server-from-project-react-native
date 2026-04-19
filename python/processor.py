@@ -6,9 +6,6 @@ import sys
 import json
 import os
 import subprocess
-from PIL import Image
-import xml.etree.ElementTree as ET
-
 import music21
 from music21 import *
 
@@ -30,105 +27,32 @@ log(f"LilyPond path: {lilypond_path}")
 
 
 # ---------------------------------------------------------
-# FIX LILYPOND SYNTAX (CRITICAL FOR DEPLOYMENT)
+# SIMPLIFY NOTES (УПРОЩЕНИЕ НОТ)
 # ---------------------------------------------------------
-def fix_ly_syntax(ly_path):
-    """Исправляет синтаксис LilyPond для совместимости с версией 2.24.x"""
-    with open(ly_path, 'r', encoding='utf-8') as f:
-        content = f.read()
+def simplify_notes(score):
+    """Максимально упрощает ноты для LilyPond"""
     
-    # 1. Исправляем устаревший синтаксис override (#'direction -> .direction)
-    content = content.replace("\\override Stem #'direction", "\\override Stem.direction")
-    content = content.replace("\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first")
+    # 1. Превращаем всё в аккорды (убираем полифонию)
+    score = score.chordify()
+    log("Упрощено: chordify")
     
-    # 2. Исправляем проблему с << < и > >>
-    content = content.replace("<< <", "<<")
-    content = content.replace("> >>", ">>")
+    # 2. Убираем все артикуляции, динамику, темпо
+    for note in score.flat.notes:
+        note.articulations = []
+        note.expressions = []
     
-    # 3. Убираем лишние пробелы в конструкциях
-    content = content.replace("< <", "<")
-    content = content.replace("> >", ">")
+    # 3. Убираем лиги и форшлаги
+    for note in score.flat.notes:
+        note.tie = None
+        note.grace = None
     
-    # 4. Исправляем \once \override Stem direction
-    content = content.replace("\\once \\override Stem direction", "\\once \\override Stem.direction")
+    # 4. Упрощаем длительности до четвертей/восьмых
+    for note in score.flat.notes:
+        if note.duration.quarterLength not in [0.5, 1.0, 1.5, 2.0, 3.0, 4.0]:
+            note.duration.quarterLength = 1.0
     
-    with open(ly_path, 'w', encoding='utf-8') as f:
-        f.write(content)
-    
-    log(f"Исправлен синтаксис: {ly_path}")
-
-
-# ---------------------------------------------------------
-# NORMALIZATION OF MUSICXML
-# ---------------------------------------------------------
-def normalize_musicxml(xml_path):
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-
-    # Удаляем namespace
-    for elem in root.iter():
-        if "}" in elem.tag:
-            elem.tag = elem.tag.split("}", 1)[1]
-
-    # 1) Удаляем вложенные <voice> внутри <note>
-    for note in root.findall(".//note"):
-        voices = note.findall("voice")
-        if len(voices) > 1:
-            for v in voices[1:]:
-                note.remove(v)
-
-    # 2) Удаляем вложенные <measure> внутри <measure>
-    for measure in root.findall(".//measure"):
-        nested = measure.findall("measure")
-        for m in nested:
-            measure.remove(m)
-
-    # 3) Удаляем пустые ноты
-    for measure in root.findall(".//measure"):
-        for note in list(measure):
-            if note.tag == "note":
-                if note.find("pitch") is None and note.find("rest") is None:
-                    measure.remove(note)
-
-    # 4) Чистим backup/forward
-    for measure in root.findall(".//measure"):
-        children = list(measure)
-        cleaned = []
-        skip = False
-
-        for i, child in enumerate(children):
-            if skip:
-                skip = False
-                continue
-
-            if child.tag in ("backup", "forward"):
-                if i + 1 < len(children) and children[i+1].tag in ("backup", "forward"):
-                    skip = False
-                    continue
-
-            cleaned.append(child)
-
-        measure[:] = cleaned
-
-    # 5) Удаляем вложенные <part> внутри <part>
-    for part in root.findall(".//part"):
-        nested = part.findall("part")
-        for p in nested:
-            part.remove(p)
-
-    normalized_path = xml_path.replace(".musicxml", "_normalized.musicxml")
-    tree.write(normalized_path, encoding="utf-8", xml_declaration=True)
-    return normalized_path
-
-
-# ---------------------------------------------------------
-# CHORD SIMPLIFICATION
-# ---------------------------------------------------------
-def simplify_chord(ch):
-    pitches = sorted({p.nameWithOctave for p in ch.pitches})
-    new_ch = chord.Chord(pitches)
-    new_ch.duration = ch.duration
-    return new_ch
+    log("Упрощены: артикуляции, длительности, лиги")
+    return score
 
 
 # ---------------------------------------------------------
@@ -136,101 +60,94 @@ def simplify_chord(ch):
 # ---------------------------------------------------------
 def process_file(xml_path, semitones=-2):
     try:
-        log(f"Нормализуем MusicXML: {xml_path}")
-        xml_path = normalize_musicxml(xml_path)
+        log(f"Обработка: {xml_path}")
 
-        log(f"Загружаем MusicXML: {xml_path}")
+        # Загружаем MusicXML
         score = converter.parse(xml_path)
+        log(f"Загружено нот: {len(score.flat.notes)}")
 
-        if len(score.flat.notes) == 0:
-            raise Exception("MusicXML содержит 0 нот")
+        # Упрощаем ноты
+        score = simplify_notes(score)
 
+        # Определяем тональность
         try:
-            key = score.analyze("key")
+            key = score.analyze('key')
             source_key = f"{key.tonic.name} {key.mode}"
             log(f"Тональность: {source_key}")
         except:
             source_key = "unknown"
 
+        # Транспонируем
         log(f"Транспонируем на {semitones} полутонов")
         transposed = score.transpose(semitones)
-        transposed.makeNotation(inPlace=True)
 
-        for n in transposed.recurse().notes:
-            if isinstance(n, chord.Chord):
-                new = simplify_chord(n)
-                n.pitches = new.pitches
-
-        base = os.path.splitext(os.path.basename(xml_path))[0].replace("_normalized", "")
-        ly_path = os.path.join(OUTPUTS_DIR, f"{base}_transposed.ly")
-
-        log(f"Сохраняем .ly: {ly_path}")
-        transposed.write("lilypond", fp=ly_path)
+        # Сохраняем как LilyPond
+        base_name = os.path.splitext(os.path.basename(xml_path))[0]
+        ly_path = os.path.join(OUTPUTS_DIR, f"{base_name}.ly")
         
-        # КРИТИЧЕСКИ ВАЖНО: исправляем синтаксис перед вызовом LilyPond
-        fix_ly_syntax(ly_path)
+        log(f"Сохраняем .ly: {ly_path}")
+        transposed.write('lilypond', fp=ly_path)
 
+        # Исправляем синтаксис LilyPond
+        with open(ly_path, 'r', encoding='utf-8') as f:
+            ly_content = f.read()
+        
+        # Базовые замены
+        ly_content = ly_content.replace("\\override Stem #'direction", "\\override Stem.direction")
+        ly_content = ly_content.replace("\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first")
+        
+        with open(ly_path, 'w', encoding='utf-8') as f:
+            f.write(ly_content)
+
+        # Рендерим PNG
         log("Запускаем LilyPond...")
         result = subprocess.run(
             [
                 lilypond_path,
-                "--png",
-                "-dresolution=300",
-                "-o",
-                os.path.join(OUTPUTS_DIR, base + "_transposed"),
-                ly_path,
+                '--png',
+                '-dresolution=150',  # меньше разрешение = быстрее
+                '-o', os.path.join(OUTPUTS_DIR, base_name),
+                ly_path
             ],
             capture_output=True,
-            text=True,
+            text=True
         )
 
         if result.returncode != 0:
-            log(f"LilyPond STDERR: {result.stderr}")
+            log(f"LilyPond ошибка: {result.stderr[:300]}")
             raise Exception("LilyPond compilation failed")
 
-        log("LilyPond успешно завершил работу")
-
-        # PNG поиск
-        pngs = []
-        page = 1
-        while True:
-            p = os.path.join(OUTPUTS_DIR, f"{base}_transposed-page{page}.png")
-            if os.path.exists(p):
-                pngs.append(p)
-                log(f"Найден PNG: {p}")
-                page += 1
-            else:
+        # Ищем PNG
+        png_file = None
+        for f in os.listdir(OUTPUTS_DIR):
+            if f.startswith(base_name) and f.endswith('.png'):
+                png_file = f
                 break
 
-        single = os.path.join(OUTPUTS_DIR, f"{base}_transposed.png")
-        if not pngs and os.path.exists(single):
-            pngs.append(single)
-            log(f"Найден одиночный PNG: {single}")
+        if not png_file:
+            raise Exception("PNG не создан")
 
-        if not pngs:
-            raise Exception("PNG не созданы")
+        png_path = os.path.join(OUTPUTS_DIR, png_file)
+        log(f"Создан PNG: {png_path}")
 
+        # Результат
         result_data = {
             "success": True,
             "input_file": os.path.basename(xml_path),
-            "output_files": [
-                {
-                    "path": pngs[0],
-                    "name": os.path.basename(pngs[0]),
-                    "url": f"/outputs/{os.path.basename(pngs[0])}",
-                }
-            ],
+            "output_files": [{
+                "path": png_path,
+                "name": png_file,
+                "url": f"/outputs/{png_file}"
+            }],
             "source_key": source_key,
-            "message": "Готово",
+            "message": "Готово"
         }
 
         print(json.dumps(result_data, ensure_ascii=False))
         return result_data
 
     except Exception as e:
-        import traceback
         log(f"ОШИБКА: {str(e)}")
-        log(traceback.format_exc())
         print(json.dumps({"success": False, "error": str(e)}))
         return None
 
