@@ -27,7 +27,7 @@ log(f"LilyPond path: {lilypond_path}")
 
 
 # ---------------------------------------------------------
-# SIMPLIFY NOTES (УПРОЩЕНИЕ НОТ)
+# SIMPLIFY NOTES
 # ---------------------------------------------------------
 def simplify_notes(score):
     """Максимально упрощает ноты для LilyPond"""
@@ -53,6 +53,40 @@ def simplify_notes(score):
     
     log("Упрощены: артикуляции, длительности, лиги")
     return score
+
+
+# ---------------------------------------------------------
+# FIX LILYPOND FILE (УДАЛЯЕМ ПРОБЛЕМНЫЕ КОМАНДЫ)
+# ---------------------------------------------------------
+def fix_ly_file(ly_path):
+    """Удаляет команды, которые не поддерживаются LilyPond"""
+    with open(ly_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Удаляем проблемные команды
+    content = content.replace("\\RemoveEmptyStaffContext", "")
+    content = content.replace("\\RemoveEmptyStaffContext", "", 1)
+    
+    # Удаляем строки, начинающиеся с этих команд
+    lines = content.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        if 'RemoveEmptyStaffContext' in line:
+            continue
+        if '\\new Staff' in line and '\\RemoveEmptyStaffContext' in line:
+            line = line.replace('\\RemoveEmptyStaffContext', '')
+        cleaned_lines.append(line)
+    
+    content = '\n'.join(cleaned_lines)
+    
+    # Базовые замены синтаксиса
+    content = content.replace("\\override Stem #'direction", "\\override Stem.direction")
+    content = content.replace("\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first")
+    
+    with open(ly_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    
+    log(f"LilyPond файл исправлен")
 
 
 # ---------------------------------------------------------
@@ -88,16 +122,8 @@ def process_file(xml_path, semitones=-2):
         log(f"Сохраняем .ly: {ly_path}")
         transposed.write('lilypond', fp=ly_path)
 
-        # Исправляем синтаксис LilyPond
-        with open(ly_path, 'r', encoding='utf-8') as f:
-            ly_content = f.read()
-        
-        # Базовые замены
-        ly_content = ly_content.replace("\\override Stem #'direction", "\\override Stem.direction")
-        ly_content = ly_content.replace("\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first")
-        
-        with open(ly_path, 'w', encoding='utf-8') as f:
-            f.write(ly_content)
+        # Исправляем LilyPond файл (удаляем проблемные команды)
+        fix_ly_file(ly_path)
 
         # Рендерим PNG
         log("Запускаем LilyPond...")
@@ -105,7 +131,7 @@ def process_file(xml_path, semitones=-2):
             [
                 lilypond_path,
                 '--png',
-                '-dresolution=150',  # меньше разрешение = быстрее
+                '-dresolution=150',
                 '-o', os.path.join(OUTPUTS_DIR, base_name),
                 ly_path
             ],
