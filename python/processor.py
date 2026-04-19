@@ -6,6 +6,7 @@ import sys
 import json
 import os
 import subprocess
+from PIL import Image
 import music21
 from music21 import *
 
@@ -27,26 +28,22 @@ log(f"LilyPond path: {lilypond_path}")
 
 
 # ---------------------------------------------------------
-# SIMPLIFY NOTES
+# УПРОЩЕНИЕ НОТ
 # ---------------------------------------------------------
 def simplify_notes(score):
     """Максимально упрощает ноты для LilyPond"""
-    
-    # 1. Превращаем всё в аккорды (убираем полифонию)
+    # Превращаем всё в аккорды
     score = score.chordify()
     log("Упрощено: chordify")
     
-    # 2. Убираем все артикуляции, динамику, темпо
+    # Убираем артикуляции, лиги, форшлаги
     for note in score.flat.notes:
         note.articulations = []
         note.expressions = []
-    
-    # 3. Убираем лиги и форшлаги
-    for note in score.flat.notes:
         note.tie = None
         note.grace = None
     
-    # 4. Упрощаем длительности до четвертей/восьмых
+    # Упрощаем длительности
     for note in score.flat.notes:
         if note.duration.quarterLength not in [0.5, 1.0, 1.5, 2.0, 3.0, 4.0]:
             note.duration.quarterLength = 1.0
@@ -56,32 +53,22 @@ def simplify_notes(score):
 
 
 # ---------------------------------------------------------
-# FIX LILYPOND FILE (УДАЛЯЕМ ПРОБЛЕМНЫЕ КОМАНДЫ)
+# ИСПРАВЛЕНИЕ LILYPOND ФАЙЛА
 # ---------------------------------------------------------
 def fix_ly_file(ly_path):
-    """Удаляет команды, которые не поддерживаются LilyPond"""
+    """Удаляет проблемные команды из LilyPond файла"""
     with open(ly_path, 'r', encoding='utf-8') as f:
         content = f.read()
     
     # Удаляем проблемные команды
     content = content.replace("\\RemoveEmptyStaffContext", "")
-    content = content.replace("\\RemoveEmptyStaffContext", "", 1)
-    
-    # Удаляем строки, начинающиеся с этих команд
-    lines = content.split('\n')
-    cleaned_lines = []
-    for line in lines:
-        if 'RemoveEmptyStaffContext' in line:
-            continue
-        if '\\new Staff' in line and '\\RemoveEmptyStaffContext' in line:
-            line = line.replace('\\RemoveEmptyStaffContext', '')
-        cleaned_lines.append(line)
-    
-    content = '\n'.join(cleaned_lines)
-    
-    # Базовые замены синтаксиса
     content = content.replace("\\override Stem #'direction", "\\override Stem.direction")
     content = content.replace("\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first")
+    
+    # Удаляем строки с RemoveEmptyStaffContext
+    lines = content.split('\n')
+    cleaned = [line for line in lines if 'RemoveEmptyStaffContext' not in line]
+    content = '\n'.join(cleaned)
     
     with open(ly_path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -90,7 +77,7 @@ def fix_ly_file(ly_path):
 
 
 # ---------------------------------------------------------
-# MAIN PROCESSING
+# ОСНОВНАЯ ФУНКЦИЯ
 # ---------------------------------------------------------
 def process_file(xml_path, semitones=-2):
     try:
@@ -100,7 +87,7 @@ def process_file(xml_path, semitones=-2):
         score = converter.parse(xml_path)
         log(f"Загружено нот: {len(score.flat.notes)}")
 
-        # Упрощаем ноты
+        # Упрощаем
         score = simplify_notes(score)
 
         # Определяем тональность
@@ -121,8 +108,6 @@ def process_file(xml_path, semitones=-2):
         
         log(f"Сохраняем .ly: {ly_path}")
         transposed.write('lilypond', fp=ly_path)
-
-        # Исправляем LilyPond файл (удаляем проблемные команды)
         fix_ly_file(ly_path)
 
         # Рендерим PNG
@@ -140,33 +125,40 @@ def process_file(xml_path, semitones=-2):
         )
 
         if result.returncode != 0:
-            log(f"LilyPond ошибка: {result.stderr[:300]}")
+            log(f"LilyPond ошибка: {result.stderr[:500]}")
             raise Exception("LilyPond compilation failed")
 
-        # Ищем PNG
-        png_file = None
-        for f in os.listdir(OUTPUTS_DIR):
+        # СОБИРАЕМ ВСЕ PNG
+        png_files = []
+        for f in sorted(os.listdir(OUTPUTS_DIR)):
             if f.startswith(base_name) and f.endswith('.png'):
-                png_file = f
-                break
+                png_files.append(f)
 
-        if not png_file:
-            raise Exception("PNG не создан")
+        if not png_files:
+            raise Exception("PNG не созданы")
 
-        png_path = os.path.join(OUTPUTS_DIR, png_file)
-        log(f"Создан PNG: {png_path}")
+        log(f"Найдено PNG: {len(png_files)}")
 
-        # Результат
+        # ФОРМИРУЕМ МАССИВ ДЛЯ ОТВЕТА
+        output_files = []
+        for idx, f in enumerate(png_files):
+            output_files.append({
+                "path": os.path.join(OUTPUTS_DIR, f),
+                "name": f,
+                "url": f"/outputs/{f}",
+                "page": idx + 1
+            })
+
+        # УДАЛЯЕМ ВРЕМЕННЫЕ .ly ФАЙЛЫ
+        if os.path.exists(ly_path):
+            os.remove(ly_path)
+
         result_data = {
             "success": True,
             "input_file": os.path.basename(xml_path),
-            "output_files": [{
-                "path": png_path,
-                "name": png_file,
-                "url": f"/outputs/{png_file}"
-            }],
+            "output_files": output_files,
             "source_key": source_key,
-            "message": "Готово"
+            "message": f"Готово ({len(output_files)} стр.)"
         }
 
         print(json.dumps(result_data, ensure_ascii=False))
@@ -179,7 +171,7 @@ def process_file(xml_path, semitones=-2):
 
 
 # ---------------------------------------------------------
-# ENTRY POINT
+# ТОЧКА ВХОДА
 # ---------------------------------------------------------
 if __name__ == "__main__":
     if len(sys.argv) < 2:
