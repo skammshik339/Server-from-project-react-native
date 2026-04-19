@@ -6,6 +6,7 @@ import sys
 import json
 import os
 import subprocess
+import re
 from PIL import Image
 import xml.etree.ElementTree as ET
 
@@ -26,10 +27,36 @@ os.makedirs(OUTPUTS_DIR, exist_ok=True)
 us = environment.UserSettings()
 lilypond_path = os.environ.get("LILYPOND_PATH", "/usr/bin/lilypond")
 us['lilypondPath'] = lilypond_path
+log(f"LilyPond path: {lilypond_path}")
 
-# === КРИТИЧЕСКОЕ: заставляем music21 использовать старый форматтер ===
-env = environment.Environment()
-env['lilypondVersion'] = '2.18.0'
+
+# ---------------------------------------------------------
+# FIX LILYPOND SYNTAX (CRITICAL FOR DEPLOYMENT)
+# ---------------------------------------------------------
+def fix_ly_syntax(ly_path):
+    """Исправляет синтаксис LilyPond для совместимости с версией 2.24.x"""
+    with open(ly_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # 1. Исправляем устаревший синтаксис override (#'direction -> .direction)
+    content = re.sub(r"\\override Stem #'direction", "\\override Stem.direction", content)
+    content = re.sub(r"\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first", content)
+    
+    # 2. Исправляем проблему с << < и > >>
+    content = re.sub(r'<<\s*<', '<<', content)
+    content = re.sub(r'>\s*>>', '>>', content)
+    
+    # 3. Убираем лишние пробелы в конструкциях
+    content = re.sub(r'< <', '<', content)
+    content = re.sub(r'> >', '>', content)
+    
+    # 4. Исправляем \once \override Stem direction (убираем лишние пробелы)
+    content = re.sub(r'\\once \\override Stem\s+direction', '\\once \\override Stem.direction', content)
+    
+    with open(ly_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    
+    log(f"Исправлен синтаксис: {ly_path}")
 
 
 # ---------------------------------------------------------
@@ -106,22 +133,6 @@ def simplify_chord(ch):
 
 
 # ---------------------------------------------------------
-# CLEAN LILYPOND FILE
-# ---------------------------------------------------------
-def clean_ly_file(path):
-    with open(path, "r", encoding="utf-8") as f:
-        ly = f.read()
-
-    ly = ly.replace("\\RemoveEmptyStaffContext", "")
-    ly = ly.replace("#'direction", "direction")
-    ly = ly.replace("<<", "< <")
-    ly = ly.replace(">>", "> >")
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(ly)
-
-
-# ---------------------------------------------------------
 # MAIN PROCESSING
 # ---------------------------------------------------------
 def process_file(xml_path, semitones=-2):
@@ -138,9 +149,11 @@ def process_file(xml_path, semitones=-2):
         try:
             key = score.analyze("key")
             source_key = f"{key.tonic.name} {key.mode}"
+            log(f"Тональность: {source_key}")
         except:
             source_key = "unknown"
 
+        log(f"Транспонируем на {semitones} полутонов")
         transposed = score.transpose(semitones)
         transposed.makeNotation(inPlace=True)
 
@@ -154,8 +167,9 @@ def process_file(xml_path, semitones=-2):
 
         log(f"Сохраняем .ly: {ly_path}")
         transposed.write("lilypond", fp=ly_path)
-
-        clean_ly_file(ly_path)
+        
+        # КРИТИЧЕСКИ ВАЖНО: исправляем синтаксис перед вызовом LilyPond
+        fix_ly_syntax(ly_path)
 
         log("Запускаем LilyPond...")
         result = subprocess.run(
@@ -172,8 +186,10 @@ def process_file(xml_path, semitones=-2):
         )
 
         if result.returncode != 0:
-            log(result.stderr)
+            log(f"LilyPond STDERR: {result.stderr}")
             raise Exception("LilyPond compilation failed")
+
+        log("LilyPond успешно завершил работу")
 
         # PNG поиск
         pngs = []
@@ -182,6 +198,7 @@ def process_file(xml_path, semitones=-2):
             p = os.path.join(OUTPUTS_DIR, f"{base}_transposed-page{page}.png")
             if os.path.exists(p):
                 pngs.append(p)
+                log(f"Найден PNG: {p}")
                 page += 1
             else:
                 break
@@ -189,11 +206,12 @@ def process_file(xml_path, semitones=-2):
         single = os.path.join(OUTPUTS_DIR, f"{base}_transposed.png")
         if not pngs and os.path.exists(single):
             pngs.append(single)
+            log(f"Найден одиночный PNG: {single}")
 
         if not pngs:
             raise Exception("PNG не созданы")
 
-        result = {
+        result_data = {
             "success": True,
             "input_file": os.path.basename(xml_path),
             "output_files": [
@@ -207,12 +225,12 @@ def process_file(xml_path, semitones=-2):
             "message": "Готово",
         }
 
-        print(json.dumps(result, ensure_ascii=False))
-        return result
+        print(json.dumps(result_data, ensure_ascii=False))
+        return result_data
 
     except Exception as e:
         import traceback
-        log(str(e))
+        log(f"ОШИБКА: {str(e)}")
         log(traceback.format_exc())
         print(json.dumps({"success": False, "error": str(e)}))
         return None
