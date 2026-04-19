@@ -6,7 +6,6 @@ import sys
 import json
 import os
 import subprocess
-import re
 from PIL import Image
 import xml.etree.ElementTree as ET
 
@@ -39,19 +38,19 @@ def fix_ly_syntax(ly_path):
         content = f.read()
     
     # 1. Исправляем устаревший синтаксис override (#'direction -> .direction)
-    content = re.sub(r"\\override Stem #'direction", "\\override Stem.direction", content)
-    content = re.sub(r"\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first", content)
+    content = content.replace("\\override Stem #'direction", "\\override Stem.direction")
+    content = content.replace("\\override VerticalAxisGroup #'remove-first", "\\override VerticalAxisGroup.remove-first")
     
     # 2. Исправляем проблему с << < и > >>
-    content = re.sub(r'<<\s*<', '<<', content)
-    content = re.sub(r'>\s*>>', '>>', content)
+    content = content.replace("<< <", "<<")
+    content = content.replace("> >>", ">>")
     
     # 3. Убираем лишние пробелы в конструкциях
-    content = re.sub(r'< <', '<', content)
-    content = re.sub(r'> >', '>', content)
+    content = content.replace("< <", "<")
+    content = content.replace("> >", ">")
     
-    # 4. Исправляем \once \override Stem direction (убираем лишние пробелы)
-    content = re.sub(r'\\once \\override Stem\s+direction', '\\once \\override Stem.direction', content)
+    # 4. Исправляем \once \override Stem direction
+    content = content.replace("\\once \\override Stem direction", "\\once \\override Stem.direction")
     
     with open(ly_path, 'w', encoding='utf-8') as f:
         f.write(content)
