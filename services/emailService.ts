@@ -15,7 +15,7 @@ export const sendVerificationEmail = async (email: string, token: string) => {
         <a href="${verificationUrl}">${verificationUrl}</a>
       `,
     },
-    {
+    { 
       headers: {
         Authorization: `Bearer ${process.env.MAILERSEND_API_KEY}`,
         "Content-Type": "application/json",
