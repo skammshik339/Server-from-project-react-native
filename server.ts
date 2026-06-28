@@ -11,6 +11,7 @@ import authRoutes from "./routes/authRouter";
 import transposeRouter from "./routes/transposeRouter";
 import userRouter from "./routes/userRouter";
 import postRouter from "./routes/postRouter";
+import fs from 'fs'
 
 import rateLimit from "express-rate-limit";
 
@@ -32,6 +33,10 @@ app.use(cookieParser());
 
 app.use("/uploads", express.static(path.join(__dirname, "./uploads")));
 app.use("/outputs", express.static(path.join(__dirname, "./outputs")));
+
+console.log('__dirname:', __dirname);
+console.log('Uploads path:', path.join(__dirname, './uploads'));
+console.log('Uploads exists:', fs.existsSync(path.join(__dirname, './uploads')))
 
 const limiter = rateLimit({
   windowMs: 60 * 1000,
