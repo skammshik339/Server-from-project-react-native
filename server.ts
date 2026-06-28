@@ -30,8 +30,8 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-app.use("/outputs", express.static(path.join(__dirname, "../outputs")));
+app.use("/uploads", express.static(path.join(__dirname, "./uploads")));
+app.use("/outputs", express.static(path.join(__dirname, "./outputs")));
 
 const limiter = rateLimit({
   windowMs: 60 * 1000,
