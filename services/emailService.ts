@@ -3,6 +3,10 @@ import axios from "axios";
 export const sendVerificationEmail = async (email: string, token: string) => {
   const verificationUrl = `https://server-from-project-react-native.onrender.com/api/auth/verify-email?token=${token}`;
 
+ console.log("📧 Attempting to send email to:", email);
+  console.log("📧 MAILERSEND_FROM:", process.env.MAILERSEND_FROM);
+  console.log("📧 API Key exists:", !!process.env.MAILERSEND_API_KEY);
+
   await axios.post(
     "https://api.mailersend.com/v1/messages",
     {
