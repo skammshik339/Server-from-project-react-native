@@ -31,12 +31,16 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-app.use("/uploads", express.static(path.join(__dirname, "./uploads")));
-app.use("/outputs", express.static(path.join(__dirname, "./outputs")));
+const uploadsPath = path.join(__dirname, "../uploads");
+const outputsPath = path.join(__dirname, "../outputs");
 
-console.log('__dirname:', __dirname);
-console.log('Uploads path:', path.join(__dirname, './uploads'));
-console.log('Uploads exists:', fs.existsSync(path.join(__dirname, './uploads')))
+console.log('Uploads path:', uploadsPath);
+console.log('Uploads exists:', fs.existsSync(uploadsPath));
+console.log('Outputs path:', outputsPath);
+console.log('Outputs exists:', fs.existsSync(outputsPath));
+
+app.use("/uploads", express.static(uploadsPath));
+app.use("/outputs", express.static(outputsPath));
 
 const limiter = rateLimit({
   windowMs: 60 * 1000,
