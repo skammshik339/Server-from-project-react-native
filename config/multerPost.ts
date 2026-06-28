@@ -3,7 +3,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 
-const postsUploadDir = path.join(__dirname, '../uploads/posts');
+const postsUploadDir = path.join(process.cwd(), 'uploads/posts');
 if (!fs.existsSync(postsUploadDir)) {
   fs.mkdirSync(postsUploadDir, { recursive: true });
 }

@@ -22,6 +22,10 @@ class PostService {
 
   await post.save();
 
+console.log('Saving image path in DB:', image);
+console.log('Full file system path:', path.join(__dirname, '..', image as string));
+console.log('File exists after save:', fs.existsSync(path.join(__dirname, '..', image as string)));
+
   const pPost = await Post.findById(post._id)
     .populate("userId", "name email image")
     .populate("transpositionId", "name images") 

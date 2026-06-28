@@ -31,13 +31,11 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-const uploadsPath = path.join(__dirname, "../uploads");
-const outputsPath = path.join(__dirname, "../outputs");
+const uploadsPath = path.join(process.cwd(), 'uploads');
+const outputsPath = path.join(process.cwd(), 'outputs');
 
-console.log('Uploads path:', uploadsPath);
+console.log('Uploads path (cwd):', uploadsPath);
 console.log('Uploads exists:', fs.existsSync(uploadsPath));
-console.log('Outputs path:', outputsPath);
-console.log('Outputs exists:', fs.existsSync(outputsPath));
 
 app.use("/uploads", express.static(uploadsPath));
 app.use("/outputs", express.static(outputsPath));
