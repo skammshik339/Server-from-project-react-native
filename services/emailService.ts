@@ -8,7 +8,7 @@ export const sendVerificationEmail = async (email: string, token: string) => {
   console.log("📧 API Key exists:", !!process.env.MAILERSEND_API_KEY);
 
   await axios.post(
-    "https://api.mailersend.com/v1/messages",
+    "https://api.mailersend.com/v1/email",
     {
       from: { email: process.env.MAILERSEND_FROM },
       to: [{ email }],
