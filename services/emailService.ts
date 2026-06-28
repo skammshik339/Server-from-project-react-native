@@ -4,7 +4,7 @@ export const sendVerificationEmail = async (email: string, token: string) => {
   const verificationUrl = `https://server-from-project-react-native.onrender.com/api/auth/verify-email?token=${token}`;
 
   await axios.post(
-    "https://api.mailersend.com/v1/email",
+    "https://api.mailersend.com/v1/messages",
     {
       from: { email: process.env.MAILERSEND_FROM },
       to: [{ email }],
